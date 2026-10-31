@@ -1,0 +1,308 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoodLens AI 2.0</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;min-height:100vh;padding:25px;
+ display:flex;align-items:center;justify-content:center;
+ background:linear-gradient(135deg,#11142e,#30255c,#093c50);
+ color:white;font-family:Arial,sans-serif;
+}
+.container{
+ width:100%;max-width:600px;padding:32px;
+ background:#ffffff12;border:1px solid #ffffff35;
+ border-radius:24px;box-shadow:0 20px 60px #0005;
+}
+.tag{font-size:12px;color:#9acaff;letter-spacing:2px}
+h1{font-size:38px;margin:14px 0}
+p{color:#cbd4eb;line-height:1.6}
+.languages{font-size:13px;color:#a9e7f5;margin:20px 0}
+textarea{
+ width:100%;height:145px;padding:16px;
+ border:1px solid #59698d;border-radius:13px;
+ background:#141b35;color:white;
+ font:16px Arial;resize:vertical;
+}
+button{cursor:pointer}
+.main-button{
+ width:100%;margin-top:14px;padding:15px;
+ border:0;border-radius:12px;color:white;
+ font-size:16px;font-weight:bold;
+ background:linear-gradient(90deg,#825dff,#20c5c7);
+}
+.examples{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+.example{
+ background:#ffffff18;color:white;
+ border:1px solid #ffffff35;
+ border-radius:20px;padding:9px 12px;
+}
+#result{
+ display:none;margin-top:20px;padding:20px;
+ background:#ffffff16;border-radius:14px;
+}
+#sentiment{font-size:26px;font-weight:bold}
+#language{color:#a9e7f5;margin-top:12px}
+small{display:block;color:#adb9d1;margin-top:22px;line-height:1.6}
+</style>
+</head>
+
+<body>
+<div class="container">
+ <div class="tag">MULTILINGUAL AI PROJECT</div>
+ <h1>MoodLens AI 2.0 ✨</h1>
+ <p>Discover the emotion behind your words using a simple multilingual sentiment analysis model.</p>
+ <div class="languages">
+ English • Hindi • Telugu • Hinglish • Teluglish
+ </div>
+
+ <textarea id="message" placeholder="Try: Ee movie chaala bagundi!"></textarea>
+
+ <div class="examples">
+  <button class="example" onclick="example('Ee movie chaala bagundi')">Teluglish 😊</button>
+  <button class="example" onclick="example('Naaku assalu nachaledhu')">Teluglish 😔</button>
+  <button class="example" onclick="example('నాకు చాలా నచ్చింది')">Telugu</button>
+  <button class="example" onclick="example('Mujhe bahut accha laga')">Hinglish</button>
+  <button class="example" onclick="example('यह बहुत खराब है')">Hindi</button>
+  <button class="example" onclick="example('I love this project')">English</button>
+ </div>
+
+ <button class="main-button" onclick="analyze()">Analyze Sentiment</button>
+
+ <div id="result" aria-live="polite">
+  <div id="sentiment"></div>
+  <div id="language"></div>
+  <p id="details"></p>
+ </div>
+
+ <small>
+ Educational prototype using a small Naive Bayes model and
+ sentiment phrase matching. Predictions can be inaccurate,
+ especially with slang, sarcasm and unfamiliar spellings.
+ No text is sent to a server.
+ </small>
+</div>
+
+<script>
+const training = [
+ ["i love this amazing project","positive"],
+ ["this is really wonderful","positive"],
+ ["great work i am happy","positive"],
+ ["excellent and beautiful","positive"],
+ ["this is very good","positive"],
+ ["i hate this project","negative"],
+ ["this is very bad","negative"],
+ ["terrible and awful experience","negative"],
+ ["i am sad and angry","negative"],
+ ["this is the worst","negative"],
+ ["the meeting is tomorrow","neutral"],
+ ["class starts at nine","neutral"],
+ ["i have a notebook","neutral"],
+
+ ["ee movie chaala bagundi","positive"],
+ ["naaku chaala nachindi","positive"],
+ ["idi super ga undi","positive"],
+ ["naku chala nachindhi","positive"],
+ ["nee project adirindi","positive"],
+ ["ee movie assalu bagaledu","negative"],
+ ["naaku assalu nachaledhu","negative"],
+ ["idi chala chetta ga undi","negative"],
+ ["naku ishtam ledu","negative"],
+ ["ee movie worst","negative"],
+ ["repu college undi","neutral"],
+ ["ivala class undi","neutral"],
+
+ ["నాకు చాలా నచ్చింది","positive"],
+ ["ఈ సినిమా చాలా బాగుంది","positive"],
+ ["ఇది సూపర్","positive"],
+ ["నాకు నచ్చలేదు","negative"],
+ ["ఇది అసలు బాగోలేదు","negative"],
+ ["చాలా చెత్తగా ఉంది","negative"],
+ ["రేపు క్లాస్ ఉంది","neutral"],
+
+ ["mujhe bahut accha laga","positive"],
+ ["yeh bahut achha hai","positive"],
+ ["mujhe pasand hai","positive"],
+ ["yeh bahut kharab hai","negative"],
+ ["mujhe pasand nahi aaya","negative"],
+ ["yeh bilkul bekar hai","negative"],
+ ["aaj class hai","neutral"],
+
+ ["यह बहुत अच्छा है","positive"],
+ ["मुझे बहुत पसंद आया","positive"],
+ ["यह शानदार है","positive"],
+ ["यह बहुत खराब है","negative"],
+ ["मुझे पसंद नहीं आया","negative"],
+ ["यह बेकार है","negative"],
+ ["आज क्लास है","neutral"]
+];
+
+const classes=["positive","negative","neutral"];
+
+function tokens(text){
+ return text.toLowerCase().normalize("NFC")
+ .match(/[\p{L}\p{M}]+/gu)?.filter(x=>x.length>1)||[];
+}
+
+const counts={};
+const totals={};
+const docs={};
+const vocab=new Set();
+
+for(const c of classes){
+ counts[c]={};
+ totals[c]=0;
+ docs[c]=0;
+}
+
+for(const [text,label] of training){
+ docs[label]++;
+ for(const word of tokens(text)){
+  vocab.add(word);
+  counts[label][word]=(counts[label][word]||0)+1;
+  totals[label]++;
+ }
+}
+
+function predict(text){
+ const known=tokens(text).filter(w=>vocab.has(w));
+ if(known.length===0)return "neutral";
+
+ const scores=classes.map(c=>{
+  let score=Math.log(docs[c]/training.length);
+  for(const w of known){
+   score+=Math.log(
+    ((counts[c][w]||0)+1)/(totals[c]+vocab.size)
+   );
+  }
+  return {label:c,score};
+ });
+
+ scores.sort((a,b)=>b.score-a.score);
+ return scores[0].label;
+}
+
+// Common emotional expressions for all five varieties
+const positive=[
+ "love","great","amazing","excellent","happy",
+ "good","awesome","wonderful",
+ "bagundi","baagundi","bagundhi","baagundhi",
+ "nachindi","nachindhi","nacchindi","nacchindhi",
+ "adirindi","super","bavundi","baavundi",
+ "నచ్చింది","బాగుంది","సూపర్","అద్భుతం",
+ "accha","achha","acchi","achhi","pasand",
+ "badhiya","zabardast",
+ "अच्छा","अच्छी","शानदार","पसंद"
+];
+
+const negative=[
+ "hate","bad","terrible","awful","worst",
+ "boring","sad","useless",
+ "bagaledu","bagaledhu","baagaledu",
+ "bagoledu","baagoledu","baledu",
+ "nachaledu","nachaledhu","nacchaledu",
+ "nacchaledhu","chetta","chiraku",
+ "బాగోలేదు","బాగాలేదు","నచ్చలేదు","చెత్త",
+ "kharab","kharaab","bekar","bakwas",
+ "बुरा","खराब","बेकार","बकवास"
+];
+
+const positivePhrases=["not bad","not terrible"];
+const negativePhrases=[
+ "not good","not happy","not great",
+ "not like","dont like","don't like",
+ "ishtam ledu","ishtam ledhu",
+ "pasand nahi","accha nahi",
+ "अच्छा नहीं","पसंद नहीं"
+];
+
+function contains(text,term){
+ const clean=" "+tokens(text).join(" ")+" ";
+ const target=" "+tokens(term).join(" ")+" ";
+ return clean.includes(target);
+}
+
+function detectLanguage(text){
+ if(/[\u0C00-\u0C7F]/u.test(text))return "Telugu";
+ if(/[\u0900-\u097F]/u.test(text))return "Hindi";
+
+ const teluguWords=[
+  "naaku","naku","nenu","chaala","chala",
+  "undi","undhi","ledu","ledhu","assalu",
+  "nachindi","nachaledhu","bagundi","bagaledu",
+  "bavundi","repu","ivala","ishtam"
+ ];
+
+ const hindiWords=[
+  "mujhe","bahut","bohot","yeh","hai",
+  "nahi","accha","achha","acchi","pasand",
+  "bekar","kharab"
+ ];
+
+ if(teluguWords.some(w=>contains(text,w)))
+  return "Teluglish";
+ if(hindiWords.some(w=>contains(text,w)))
+  return "Hinglish";
+ return "English / Unknown";
+}
+
+function analyze(){
+ const message=document.getElementById("message").value.trim();
+ const box=document.getElementById("result");
+ const sentiment=document.getElementById("sentiment");
+ const language=document.getElementById("language");
+ const details=document.getElementById("details");
+
+ box.style.display="block";
+
+ if(!message){
+  sentiment.textContent="Please enter a message";
+  language.textContent="";
+  details.textContent="Type something to analyze.";
+  return;
+ }
+
+ let pos=0,neg=0;
+
+ for(const word of positive){
+  if(contains(message,word))pos++;
+ }
+ for(const word of negative){
+  if(contains(message,word))neg++;
+ }
+
+ for(const phrase of positivePhrases){
+  if(contains(message,phrase))pos+=3;
+ }
+ for(const phrase of negativePhrases){
+  if(contains(message,phrase))neg+=3;
+ }
+
+ let result;
+
+ if(pos>neg)result="positive";
+ else if(neg>pos)result="negative";
+ else result=predict(message);
+
+ const labels={
+  positive:"😊 Positive",
+  negative:"😔 Negative",
+  neutral:"😐 Neutral / Uncertain"
+ };
+
+ sentiment.textContent=labels[result];
+ language.textContent="Detected language (guess): "+detectLanguage(message);
+ details.textContent="This is an experimental prediction using a small example-trained model and sentiment word matching. Results are not guaranteed to be accurate.";
+}
+
+function example(text){
+ document.getElementById("message").value=text;
+ analyze();
+}
+</script>
+</body>
+</html>
